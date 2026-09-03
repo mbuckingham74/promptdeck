@@ -38,6 +38,11 @@ struct PromptLibraryView: View {
     @Query(sort: \PromptEntry.title) private var prompts: [PromptEntry]
     @State private var selection: UUID?
     @State private var showingNewPrompt = false
+    @State private var showingEditPrompt = false
+
+    private var selectedPrompt: PromptEntry? {
+        prompts.first(where: { $0.id == selection })
+    }
 
     var body: some View {
         Group {
@@ -66,28 +71,55 @@ struct PromptLibraryView: View {
         }
         .navigationTitle("Prompts")
         .toolbar {
-            Button {
-                showingNewPrompt = true
-            } label: {
-                Image(systemName: "plus")
+            ToolbarItem {
+                Button {
+                    showingEditPrompt = true
+                } label: {
+                    Label("Edit", systemImage: "square.and.pencil")
+                }
+                .disabled(selection == nil)
+            }
+            ToolbarItem {
+                Button {
+                    showingNewPrompt = true
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showingNewPrompt) {
-            NewPromptView()
+            PromptEditorView()
+        }
+        .sheet(isPresented: $showingEditPrompt) {
+            if let selectedPrompt {
+                PromptEditorView(entry: selectedPrompt)
+            }
         }
     }
 }
 
-struct NewPromptView: View {
+struct PromptEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var promptBody = ""
-    @State private var tagsString = ""
+    private var entry: PromptEntry?
+    @State private var title: String
+    @State private var promptBody: String
+    @State private var tagsString: String
+
+    init(entry: PromptEntry? = nil) {
+        self.entry = entry
+        _title = State(initialValue: entry?.title ?? "")
+        _promptBody = State(initialValue: entry?.body ?? "")
+        _tagsString = State(initialValue: entry?.tags.joined(separator: ", ") ?? "")
+    }
 
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !promptBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isEditing: Bool {
+        entry != nil
     }
 
     var body: some View {
@@ -98,7 +130,7 @@ struct NewPromptView: View {
                     .frame(minHeight: 120)
                 TextField("Tags (e.g. vps, sysadmin)", text: $tagsString, prompt: Text("vps, sysadmin"))
             }
-            .navigationTitle("New Prompt")
+            .navigationTitle(isEditing ? "Edit Prompt" : "New Prompt")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -107,8 +139,15 @@ struct NewPromptView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let entry = PromptEntry(title: title, body: promptBody, tags: parseTags(tagsString))
-                        modelContext.insert(entry)
+                        if let entry {
+                            entry.title = title
+                            entry.body = promptBody
+                            entry.tags = parseTags(tagsString)
+                            entry.updatedAt = Date()
+                        } else {
+                            let newEntry = PromptEntry(title: title, body: promptBody, tags: parseTags(tagsString))
+                            modelContext.insert(newEntry)
+                        }
                         dismiss()
                     }
                     .disabled(!canSave)
@@ -122,6 +161,11 @@ struct CommandLibraryView: View {
     @Query(sort: \CommandEntry.title) private var commands: [CommandEntry]
     @State private var selection: UUID?
     @State private var showingNewCommand = false
+    @State private var showingEditCommand = false
+
+    private var selectedCommand: CommandEntry? {
+        commands.first(where: { $0.id == selection })
+    }
 
     var body: some View {
         Group {
@@ -157,31 +201,61 @@ struct CommandLibraryView: View {
         }
         .navigationTitle("Commands")
         .toolbar {
-            Button {
-                showingNewCommand = true
-            } label: {
-                Image(systemName: "plus")
+            ToolbarItem {
+                Button {
+                    showingEditCommand = true
+                } label: {
+                    Label("Edit", systemImage: "square.and.pencil")
+                }
+                .disabled(selection == nil)
+            }
+            ToolbarItem {
+                Button {
+                    showingNewCommand = true
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showingNewCommand) {
-            NewCommandView()
+            CommandEditorView()
+        }
+        .sheet(isPresented: $showingEditCommand) {
+            if let selectedCommand {
+                CommandEditorView(entry: selectedCommand)
+            }
         }
     }
 }
 
-struct NewCommandView: View {
+struct CommandEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var command = ""
-    @State private var explanation = ""
-    @State private var tagsString = ""
-    @State private var platform: CommandPlatform = .macOS
-    @State private var isDangerous = false
+    private var entry: CommandEntry?
+    @State private var title: String
+    @State private var command: String
+    @State private var explanation: String
+    @State private var tagsString: String
+    @State private var platform: CommandPlatform
+    @State private var isDangerous: Bool
+
+    init(entry: CommandEntry? = nil) {
+        self.entry = entry
+        _title = State(initialValue: entry?.title ?? "")
+        _command = State(initialValue: entry?.command ?? "")
+        _explanation = State(initialValue: entry?.explanation ?? "")
+        _tagsString = State(initialValue: entry?.tags.joined(separator: ", ") ?? "")
+        _platform = State(initialValue: entry?.platform ?? .macOS)
+        _isDangerous = State(initialValue: entry?.isDangerous ?? false)
+    }
 
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isEditing: Bool {
+        entry != nil
     }
 
     var body: some View {
@@ -201,7 +275,7 @@ struct NewCommandView: View {
                 }
                 Toggle("Dangerous command", isOn: $isDangerous)
             }
-            .navigationTitle("New Command")
+            .navigationTitle(isEditing ? "Edit Command" : "New Command")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -210,15 +284,25 @@ struct NewCommandView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let entry = CommandEntry(
-                            title: title,
-                            command: command,
-                            explanation: explanation,
-                            tags: parseTags(tagsString),
-                            platform: platform,
-                            isDangerous: isDangerous
-                        )
-                        modelContext.insert(entry)
+                        if let entry {
+                            entry.title = title
+                            entry.command = command
+                            entry.explanation = explanation
+                            entry.tags = parseTags(tagsString)
+                            entry.platform = platform
+                            entry.isDangerous = isDangerous
+                            entry.updatedAt = Date()
+                        } else {
+                            let newEntry = CommandEntry(
+                                title: title,
+                                command: command,
+                                explanation: explanation,
+                                tags: parseTags(tagsString),
+                                platform: platform,
+                                isDangerous: isDangerous
+                            )
+                            modelContext.insert(newEntry)
+                        }
                         dismiss()
                     }
                     .disabled(!canSave)
