@@ -196,6 +196,7 @@ struct ContentView: View {
                 showingImportConfirm = false
                 do {
                     try ImportService.applyImport(plan: plan, container: modelContext.container, mainContext: modelContext)
+                    AutomaticBackupScheduler.shared.contentDidChange()
                     pendingImportPlan = nil
                     pendingImportArchive = nil
                     pendingImportFileName = "Promptdeck Export.promptdeck"
