@@ -1,11 +1,10 @@
 import Foundation
 import SwiftData
 
-/// Change-triggered debounced backup scheduler (Task 15B).
+/// Change-triggered debounced backup scheduler (Tasks 15B + 15C).
 ///
 /// Owned by the Promptdeck app lifecycle via the `shared` singleton.
-/// No generic job framework, no timers, no daemons, no launch catch-up,
-/// no daily fallback, no warning UI.
+/// No generic job framework, no daemons, no warning UI.
 ///
 /// Semantics: every successful content mutation calls `contentDidChange()`,
 /// which cancels any pending attempt and schedules a new backup 30 seconds
@@ -13,6 +12,12 @@ import SwiftData
 /// backup is still enabled and, if so, runs
 /// `AutomaticBackupService.performBackup(modelContext:force:false)` with a
 /// fresh `ModelContext` from `PromptdeckApp.sharedContainer`.
+///
+/// Task 15C adds two lightweight fallbacks that reuse the same silent
+/// `runBackupIfEnabled()` path: a one-time per-process launch catch-up
+/// (scheduled by the first `startLifecycle()` call) and a process-lifetime
+/// daily check approximately every 24 hours. Both are no-ops while backup
+/// is disabled, so enabling backup later in the same process still works.
 ///
 /// Results are silent: `.backedUp` / `.alreadyBackedUp` do nothing further
 /// (the success path already clears the stored error via Task 15A). On
@@ -26,10 +31,49 @@ final class AutomaticBackupScheduler {
     /// Debounce window between the last mutation and the backup attempt.
     static let debounceInterval: TimeInterval = 30.0
 
+    /// Fallback check interval while the process remains alive.
+    static let dailyInterval: TimeInterval = 24 * 60 * 60
+
     private var pendingTask: Task<Void, Never>?
+    private var lifecycleStarted = false
+    private var dailyTask: Task<Void, Never>?
 
     private static var debounceNanoseconds: UInt64 {
         UInt64(debounceInterval * 1_000_000_000)
+    }
+
+    private static var dailyNanoseconds: UInt64 {
+        UInt64(dailyInterval * 1_000_000_000)
+    }
+
+    /// Start process-lifetime fallback scheduling. Idempotent: only the
+    /// first call schedules the launch catch-up and the daily loop;
+    /// later calls (reactivation, window reappearance, Settings) do
+    /// nothing. Intentionally does not check `isEnabled` here so the
+    /// daily facility still exists if backup is enabled later.
+    func startLifecycle() {
+        guard !lifecycleStarted else { return }
+        lifecycleStarted = true
+        // Launch catch-up: prompt post-launch attempt on the next
+        // MainActor turn so initial UI presentation is not delayed.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.runBackupIfEnabled()
+        }
+        // Daily fallback: sleep ~24h between silent `force: false` checks.
+        dailyTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: Self.dailyNanoseconds)
+                } catch {
+                    break
+                }
+                guard !Task.isCancelled else { break }
+                self.runBackupIfEnabled()
+            }
+        }
     }
 
     /// Record a successful content mutation. Cancels any pending attempt

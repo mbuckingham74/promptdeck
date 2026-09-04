@@ -11,6 +11,15 @@ struct PromptdeckApp: App {
         }
     }()
 
+    init() {
+        // Task 15C: once-per-process launch + daily fallback scheduling.
+        // Async so app construction / initial UI presentation is not delayed;
+        // startLifecycle() itself is idempotent for the process lifetime.
+        Task { @MainActor in
+            AutomaticBackupScheduler.shared.startLifecycle()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
