@@ -10,10 +10,26 @@ enum LibrarySelection: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+enum LibraryViewMode: String, CaseIterable, Identifiable {
+    case recent
+    case favorites
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .recent: return "Recent"
+        case .favorites: return "Favorites"
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var selection: LibrarySelection? = .prompts
     @State private var showingShortcuts = false
     @State private var resetNonce = 0
+    @State private var promptViewMode: LibraryViewMode = .recent
+    @State private var commandViewMode: LibraryViewMode = .recent
 
     private func switchTo(_ target: LibrarySelection) {
         selection = target
@@ -34,13 +50,15 @@ struct ContentView: View {
                 PromptLibraryView(
                     librarySelection: $selection,
                     resetNonce: $resetNonce,
-                    showingShortcuts: $showingShortcuts
+                    showingShortcuts: $showingShortcuts,
+                    viewMode: $promptViewMode
                 )
             case .commands:
                 CommandLibraryView(
                     librarySelection: $selection,
                     resetNonce: $resetNonce,
-                    showingShortcuts: $showingShortcuts
+                    showingShortcuts: $showingShortcuts,
+                    viewMode: $commandViewMode
                 )
             }
         }
@@ -71,6 +89,44 @@ private func copyToPasteboard(_ text: String) -> Bool {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     return pasteboard.setString(text, forType: .string)
+}
+
+// View-mode ordering: copied entries newest-first by lastCopiedAt,
+// never-copied after, title ascending as tiebreak. isFavorite plays no role.
+private func sortPromptsByRecency(_ entries: [PromptEntry]) -> [PromptEntry] {
+    entries.sorted { lhs, rhs in
+        switch (lhs.lastCopiedAt, rhs.lastCopiedAt) {
+        case let (l?, r?):
+            if l != r {
+                return l > r
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+}
+
+private func sortCommandsByRecency(_ entries: [CommandEntry]) -> [CommandEntry] {
+    entries.sorted { lhs, rhs in
+        switch (lhs.lastCopiedAt, rhs.lastCopiedAt) {
+        case let (l?, r?):
+            if l != r {
+                return l > r
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
 }
 
 // Tiny AppKit bridge: `.searchable` puts the search field in the toolbar,
@@ -129,6 +185,7 @@ struct ShortcutsHelpView: View {
                 LabeledContent("↑", value: "Previous result / return to clean search from first result")
                 LabeledContent("Return", value: "Copy selected prompt or command, then hide Promptdeck")
                 LabeledContent("Esc", value: "Cancel, reset, and hide Promptdeck")
+                LabeledContent("⇧⌘F", value: "Toggle Recent/Favorites")
                 LabeledContent("⌘?", value: "Show keyboard shortcuts")
             }
             .frame(minHeight: 220)
@@ -187,6 +244,7 @@ struct PromptLibraryView: View {
     @Binding var librarySelection: LibrarySelection?
     @Binding var resetNonce: Int
     @Binding var showingShortcuts: Bool
+    @Binding var viewMode: LibraryViewMode
     @Query(sort: \PromptEntry.title) private var prompts: [PromptEntry]
     @State private var selection: UUID?
     @State private var showingNewPrompt = false
@@ -197,11 +255,13 @@ struct PromptLibraryView: View {
     init(
         librarySelection: Binding<LibrarySelection?> = .constant(.prompts),
         resetNonce: Binding<Int> = .constant(0),
-        showingShortcuts: Binding<Bool> = .constant(false)
+        showingShortcuts: Binding<Bool> = .constant(false),
+        viewMode: Binding<LibraryViewMode> = .constant(.recent)
     ) {
         _librarySelection = librarySelection
         _resetNonce = resetNonce
         _showingShortcuts = showingShortcuts
+        _viewMode = viewMode
     }
 
     private var filteredPrompts: [PromptEntry] {
@@ -216,12 +276,13 @@ struct PromptLibraryView: View {
                     || prompt.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
             }
         }
-        return base.sorted { lhs, rhs in
-            if lhs.isFavorite != rhs.isFavorite {
-                return lhs.isFavorite && !rhs.isFavorite
-            }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        let modeBase: [PromptEntry]
+        if viewMode == .favorites {
+            modeBase = base.filter(\.isFavorite)
+        } else {
+            modeBase = base
         }
+        return sortPromptsByRecency(modeBase)
     }
 
     private var selectedPrompt: PromptEntry? {
@@ -260,6 +321,12 @@ struct PromptLibraryView: View {
     private func resetQueryAndSelection() {
         searchText = ""
         selection = nil
+    }
+
+    private func toggleViewMode() {
+        viewMode = viewMode == .recent ? .favorites : .recent
+        selection = nil
+        focusSearch()
     }
 
     private func switchLibrary(to target: LibrarySelection) {
@@ -321,6 +388,10 @@ struct PromptLibraryView: View {
                 showingShortcuts = true
                 return true
             }
+            if flags == [.command, .shift], event.keyCode == 3 {
+                toggleViewMode()
+                return true
+            }
             if flags == .command {
                 switch event.keyCode {
                 case 18:
@@ -379,6 +450,13 @@ struct PromptLibraryView: View {
                 showingShortcuts = true
                 return .handled
             }
+            if press.characters == "f" || press.characters == "F" {
+                if showingNewPrompt || showingEditPrompt || showingShortcuts {
+                    return .ignored
+                }
+                toggleViewMode()
+                return .handled
+            }
         }
         return .ignored
     }
@@ -394,8 +472,14 @@ struct PromptLibraryView: View {
             }
         } else if filteredPrompts.isEmpty {
             VStack(spacing: 8) {
-                Text("No matching prompts.")
-                    .foregroundStyle(.secondary)
+                if viewMode == .favorites,
+                   searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("No favorite prompts yet. Star entries to pin them here.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No matching prompts.")
+                        .foregroundStyle(.secondary)
+                }
             }
         } else {
             List(filteredPrompts, selection: $selection) { prompt in
@@ -422,6 +506,15 @@ struct PromptLibraryView: View {
                 resetQueryAndSelection()
                 focusSearch()
             }
+            .onChange(of: filteredPrompts.map(\.id)) { _, ids in
+                if let current = selection, !ids.contains(current) {
+                    selection = nil
+                }
+            }
+            .onChange(of: viewMode) { _, _ in
+                selection = nil
+                focusSearch()
+            }
             .onKeyPress(phases: .down) { press in
                 handleKeyPress(press)
             }
@@ -429,6 +522,14 @@ struct PromptLibraryView: View {
                 cancelAndHide()
             }
             .toolbar {
+                ToolbarItem {
+                    Picker("View", selection: $viewMode) {
+                        Text("Recent").tag(LibraryViewMode.recent)
+                        Text("Favorites").tag(LibraryViewMode.favorites)
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Toggle Recent/Favorites (⇧⌘F)")
+                }
                 ToolbarItem {
                     Button {
                         showingEditPrompt = true
@@ -564,6 +665,7 @@ struct CommandLibraryView: View {
     @Binding var librarySelection: LibrarySelection?
     @Binding var resetNonce: Int
     @Binding var showingShortcuts: Bool
+    @Binding var viewMode: LibraryViewMode
     @Query(sort: \CommandEntry.title) private var commands: [CommandEntry]
     @State private var selection: UUID?
     @State private var showingNewCommand = false
@@ -574,11 +676,13 @@ struct CommandLibraryView: View {
     init(
         librarySelection: Binding<LibrarySelection?> = .constant(.commands),
         resetNonce: Binding<Int> = .constant(0),
-        showingShortcuts: Binding<Bool> = .constant(false)
+        showingShortcuts: Binding<Bool> = .constant(false),
+        viewMode: Binding<LibraryViewMode> = .constant(.recent)
     ) {
         _librarySelection = librarySelection
         _resetNonce = resetNonce
         _showingShortcuts = showingShortcuts
+        _viewMode = viewMode
     }
 
     private var filteredCommands: [CommandEntry] {
@@ -594,12 +698,13 @@ struct CommandLibraryView: View {
                     || command.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
             }
         }
-        return base.sorted { lhs, rhs in
-            if lhs.isFavorite != rhs.isFavorite {
-                return lhs.isFavorite && !rhs.isFavorite
-            }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        let modeBase: [CommandEntry]
+        if viewMode == .favorites {
+            modeBase = base.filter(\.isFavorite)
+        } else {
+            modeBase = base
         }
+        return sortCommandsByRecency(modeBase)
     }
 
     private var selectedCommand: CommandEntry? {
@@ -638,6 +743,12 @@ struct CommandLibraryView: View {
     private func resetQueryAndSelection() {
         searchText = ""
         selection = nil
+    }
+
+    private func toggleViewMode() {
+        viewMode = viewMode == .recent ? .favorites : .recent
+        selection = nil
+        focusSearch()
     }
 
     private func switchLibrary(to target: LibrarySelection) {
@@ -699,6 +810,10 @@ struct CommandLibraryView: View {
                 showingShortcuts = true
                 return true
             }
+            if flags == [.command, .shift], event.keyCode == 3 {
+                toggleViewMode()
+                return true
+            }
             if flags == .command {
                 switch event.keyCode {
                 case 18:
@@ -757,6 +872,13 @@ struct CommandLibraryView: View {
                 showingShortcuts = true
                 return .handled
             }
+            if press.characters == "f" || press.characters == "F" {
+                if showingNewCommand || showingEditCommand || showingShortcuts {
+                    return .ignored
+                }
+                toggleViewMode()
+                return .handled
+            }
         }
         return .ignored
     }
@@ -772,8 +894,14 @@ struct CommandLibraryView: View {
             }
         } else if filteredCommands.isEmpty {
             VStack(spacing: 8) {
-                Text("No matching commands.")
-                    .foregroundStyle(.secondary)
+                if viewMode == .favorites,
+                   searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("No favorite commands yet. Star entries to pin them here.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No matching commands.")
+                        .foregroundStyle(.secondary)
+                }
             }
         } else {
             List(filteredCommands, selection: $selection) { command in
@@ -800,6 +928,15 @@ struct CommandLibraryView: View {
                 resetQueryAndSelection()
                 focusSearch()
             }
+            .onChange(of: filteredCommands.map(\.id)) { _, ids in
+                if let current = selection, !ids.contains(current) {
+                    selection = nil
+                }
+            }
+            .onChange(of: viewMode) { _, _ in
+                selection = nil
+                focusSearch()
+            }
             .onKeyPress(phases: .down) { press in
                 handleKeyPress(press)
             }
@@ -807,6 +944,14 @@ struct CommandLibraryView: View {
                 cancelAndHide()
             }
             .toolbar {
+                ToolbarItem {
+                    Picker("View", selection: $viewMode) {
+                        Text("Recent").tag(LibraryViewMode.recent)
+                        Text("Favorites").tag(LibraryViewMode.favorites)
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Toggle Recent/Favorites (⇧⌘F)")
+                }
                 ToolbarItem {
                     Button {
                         showingEditCommand = true
