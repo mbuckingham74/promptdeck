@@ -23,6 +23,18 @@ enum AutomaticBackupService {
     static let filenameExtension = "promptdeck"
     static let maxSnapshots = 14
 
+    /// Centralized identity for the retention warning set by
+    /// `enforceRetention` on an otherwise successful backup.
+    static let retentionWarningMessage = "Backup succeeded, but removing old snapshots failed."
+
+    /// Returns true for the retention warning (nil → false). Mirrors the
+    /// Settings view's detection: case-insensitive contains
+    /// "removing old snapshots".
+    static func isRetentionWarning(_ message: String?) -> Bool {
+        guard let message, !message.isEmpty else { return false }
+        return message.localizedCaseInsensitiveContains("removing old snapshots")
+    }
+
     enum BackupOutcome {
         case backedUp(URL)
         case alreadyBackedUp
@@ -70,7 +82,16 @@ enum AutomaticBackupService {
         let sealed = try sealedArchive(passphrase: passphrase, modelContext: modelContext)
 
         // Skip unchanged libraries without writing or advancing the date.
+        // Reaching here proves the location resolves, the Keychain reads,
+        // and read/fingerprint are healthy, so a stale ORDINARY error is
+        // now misleading: clear it. A retention warning is preserved
+        // untouched (no write occurred, so retention could not have been
+        // re-verified). lastHash/lastBackupDate are left alone.
         if !force, let storedHash = store.lastHash, storedHash == sealed.fingerprint {
+            if let message = store.lastErrorMessage, !isRetentionWarning(message) {
+                store.lastErrorMessage = nil
+                store.save()
+            }
             return .alreadyBackedUp
         }
 
@@ -399,7 +420,7 @@ enum AutomaticBackupService {
         }
         if failed {
             let store = BackupConfigurationStore.shared
-            store.lastErrorMessage = "Backup succeeded, but removing old snapshots failed."
+            store.lastErrorMessage = Self.retentionWarningMessage
             store.save()
         }
     }

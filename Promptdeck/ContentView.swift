@@ -26,6 +26,8 @@ enum LibraryViewMode: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var backupScheduler = AutomaticBackupScheduler.shared
     @State private var selection: LibrarySelection? = .prompts
     @State private var showingShortcuts = false
     @State private var resetNonce = 0
@@ -210,6 +212,17 @@ struct ContentView: View {
             }
         } message: {
             Text(pendingImportPlan?.summaryMessage ?? "Existing items not included in this export will remain unchanged.")
+        }
+        .alert("Automatic Backup Needs Attention", isPresented: $backupScheduler.showsBackupWarning) {
+            Button("Open Settings") {
+                openSettings()
+                backupScheduler.dismissWarning()
+            }
+            Button("OK", role: .cancel) {
+                backupScheduler.dismissWarning()
+            }
+        } message: {
+            Text("Promptdeck couldn't complete an automatic backup. It will keep retrying automatically. Open Settings to review the backup status.")
         }
     }
 }

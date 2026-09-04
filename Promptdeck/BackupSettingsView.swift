@@ -142,7 +142,7 @@ struct BackupSettingsView: View {
         guard let message = store.lastErrorMessage, !message.isEmpty else {
             return nil
         }
-        if message.localizedCaseInsensitiveContains("removing old snapshots") {
+        if AutomaticBackupService.isRetentionWarning(message) {
             return "Retention cleanup failed. \(message)"
         }
         return message
