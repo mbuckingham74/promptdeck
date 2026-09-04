@@ -25,6 +25,7 @@ enum LibraryViewMode: String, CaseIterable, Identifiable {
 }
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var selection: LibrarySelection? = .prompts
     @State private var showingShortcuts = false
     @State private var resetNonce = 0
@@ -63,6 +64,14 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    ExportService.exportLibraries(modelContext: modelContext)
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .help("Export")
+            }
             ToolbarItemGroup(placement: .automatic) {
                 Button("Show Prompts") { switchTo(.prompts) }
                     .keyboardShortcut("1", modifiers: .command)
