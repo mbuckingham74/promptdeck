@@ -185,11 +185,11 @@ enum ExportService {
         return result
     }
 
-    /// Canonical in-memory JSON pair. Reuses DTOs, makeEncoder, the shared
-    /// exportedAt timestamp, UUID sorting, and trailing newlines.
+    /// Headless-backup helper (additive; manual Export path unchanged).
+    /// Captures both libraries read-only, maps to DTOs, and UUID-sorts.
     /// Performs no disk writes.
     @MainActor
-    static func buildCanonicalPair(modelContext: ModelContext) throws -> (promptsData: Data, commandsData: Data, exportedAt: Date) {
+    static func fetchSnapshotDTOs(modelContext: ModelContext) throws -> (prompts: [PromptExportDTO], commands: [CommandExportDTO]) {
         // Snapshot both libraries read-only (independent of UI mode/search/selection).
         let promptEntries: [PromptEntry]
         let commandEntries: [CommandEntry]
@@ -199,9 +199,6 @@ enum ExportService {
         } catch {
             throw ExportBuildError.fetchFailed(error)
         }
-
-        // Single shared exportedAt for both documents.
-        let exportedAt = Date()
 
         let promptDTOs = promptEntries
             .map { entry in
@@ -236,17 +233,25 @@ enum ExportService {
             }
             .sorted { $0.id.uuidString < $1.id.uuidString }
 
+        return (prompts: promptDTOs, commands: commandDTOs)
+    }
+
+    /// Headless-backup helper (additive; manual Export path unchanged).
+    /// Encodes an already-captured DTO pair with one shared exportedAt using
+    /// the exact manual-Export documents, encoder, and trailing newlines.
+    /// Performs no disk writes.
+    static func encodeCanonicalPair(prompts: [PromptExportDTO], commands: [CommandExportDTO], exportedAt: Date) throws -> (promptsData: Data, commandsData: Data) {
         let promptDocument = PromptLibraryDocument(
             formatVersion: 1,
             library: "prompts",
             exportedAt: exportedAt,
-            prompts: promptDTOs
+            prompts: prompts
         )
         let commandDocument = CommandLibraryDocument(
             formatVersion: 1,
             library: "commands",
             exportedAt: exportedAt,
-            commands: commandDTOs
+            commands: commands
         )
 
         // Pre-encode BOTH payloads in memory (no disk writes here).
@@ -254,10 +259,24 @@ enum ExportService {
         do {
             let promptsData = withTrailingNewline(try encoder.encode(promptDocument))
             let commandsData = withTrailingNewline(try encoder.encode(commandDocument))
-            return (promptsData: promptsData, commandsData: commandsData, exportedAt: exportedAt)
+            return (promptsData: promptsData, commandsData: commandsData)
         } catch {
             throw ExportBuildError.encodeFailed(error)
         }
+    }
+
+    /// Canonical in-memory JSON pair. Reuses DTOs, makeEncoder, the shared
+    /// exportedAt timestamp, UUID sorting, and trailing newlines.
+    /// Performs no disk writes.
+    @MainActor
+    static func buildCanonicalPair(modelContext: ModelContext) throws -> (promptsData: Data, commandsData: Data, exportedAt: Date) {
+        let dtos = try fetchSnapshotDTOs(modelContext: modelContext)
+
+        // Single shared exportedAt for both documents.
+        let exportedAt = Date()
+
+        let pair = try encodeCanonicalPair(prompts: dtos.prompts, commands: dtos.commands, exportedAt: exportedAt)
+        return (promptsData: pair.promptsData, commandsData: pair.commandsData, exportedAt: exportedAt)
     }
 
     @MainActor

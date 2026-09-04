@@ -14,6 +14,12 @@
 		E4E4E4E4E4E4E4E4E4E4E4E4 /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */; };
 		E6E6E6E6E6E6E6E6E6E6E6E6 /* PromptdeckArchiveCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */; };
 		E8E8E8E8E8E8E8E8E8E8E8E8 /* ImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E7E7E7E7E7E7E7E7E7E7E7 /* ImportService.swift */; };
+		B1B1B1B1B1B1B1B1B1B1B1B2 /* BackupKeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B1B1B1B1B1B1B1B1B1 /* BackupKeychainService.swift */; };
+		B2B2B2B2B2B2B2B2B2B2B2B2 /* BackupConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B2B2B2B2B2B2B2B2B1 /* BackupConfigurationStore.swift */; };
+		B3B3B3B3B3B3B3B3B3B3B3B2 /* BackupFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B3B3B3B3B3B3B3B3B3B3B1 /* BackupFingerprint.swift */; };
+		B4B4B4B4B4B4B4B4B4B4B4B2 /* BackupSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B4B4B4B4B4B4B4B4B4B4B1 /* BackupSnapshot.swift */; };
+		B5B5B5B5B5B5B5B5B5B5B5B2 /* AutomaticBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5B5B5B5B5B5B5B5B5B5B5B1 /* AutomaticBackupService.swift */; };
+		B6B6B6B6B6B6B6B6B6B6B6B2 /* BackupSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B6B6B6B6B6B6B6B6B6B6B1 /* BackupSettingsView.swift */; };
 		7A7A7A7A7A7A7A7A7A7A7A7A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -25,6 +31,12 @@
 		E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptdeckArchiveCodec.swift; sourceTree = "<group>"; };
 		E7E7E7E7E7E7E7E7E7E7E7E7 /* ImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportService.swift; sourceTree = "<group>"; };
+		B1B1B1B1B1B1B1B1B1B1B1B1 /* BackupKeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupKeychainService.swift; sourceTree = "<group>"; };
+		B2B2B2B2B2B2B2B2B2B2B2B1 /* BackupConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfigurationStore.swift; sourceTree = "<group>"; };
+		B3B3B3B3B3B3B3B3B3B3B3B1 /* BackupFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupFingerprint.swift; sourceTree = "<group>"; };
+		B4B4B4B4B4B4B4B4B4B4B4B1 /* BackupSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupSnapshot.swift; sourceTree = "<group>"; };
+		B5B5B5B5B5B5B5B5B5B5B5B1 /* AutomaticBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticBackupService.swift; sourceTree = "<group>"; };
+		B6B6B6B6B6B6B6B6B6B6B6B1 /* BackupSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupSettingsView.swift; sourceTree = "<group>"; };
 		EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FFFFFFFFFFFFFFFFFFFFFFFF /* Promptdeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Promptdeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -66,6 +78,12 @@
 				E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */,
 				E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */,
 				E7E7E7E7E7E7E7E7E7E7E7E7 /* ImportService.swift */,
+				B1B1B1B1B1B1B1B1B1B1B1B1 /* BackupKeychainService.swift */,
+				B2B2B2B2B2B2B2B2B2B2B2B1 /* BackupConfigurationStore.swift */,
+				B3B3B3B3B3B3B3B3B3B3B3B1 /* BackupFingerprint.swift */,
+				B4B4B4B4B4B4B4B4B4B4B4B1 /* BackupSnapshot.swift */,
+				B5B5B5B5B5B5B5B5B5B5B5B1 /* AutomaticBackupService.swift */,
+				B6B6B6B6B6B6B6B6B6B6B6B1 /* BackupSettingsView.swift */,
 				EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */,
 			);
 			path = Promptdeck;
@@ -149,6 +167,12 @@
 				E4E4E4E4E4E4E4E4E4E4E4E4 /* ExportService.swift in Sources */,
 				E6E6E6E6E6E6E6E6E6E6E6E6 /* PromptdeckArchiveCodec.swift in Sources */,
 				E8E8E8E8E8E8E8E8E8E8E8E8 /* ImportService.swift in Sources */,
+				B1B1B1B1B1B1B1B1B1B1B1B2 /* BackupKeychainService.swift in Sources */,
+				B2B2B2B2B2B2B2B2B2B2B2B2 /* BackupConfigurationStore.swift in Sources */,
+				B3B3B3B3B3B3B3B3B3B3B3B2 /* BackupFingerprint.swift in Sources */,
+				B4B4B4B4B4B4B4B4B4B4B4B2 /* BackupSnapshot.swift in Sources */,
+				B5B5B5B5B5B5B5B5B5B5B5B2 /* AutomaticBackupService.swift in Sources */,
+				B6B6B6B6B6B6B6B6B6B6B6B2 /* BackupSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
