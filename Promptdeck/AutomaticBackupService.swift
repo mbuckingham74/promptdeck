@@ -12,8 +12,8 @@ import SwiftData
 /// - SwiftData is read-only (nothing is ever mutated).
 /// - The passphrase is used as exact bytes (no trimming) and never logged,
 ///   persisted outside the Keychain, or replaced by a fallback.
-/// - Writes are atomic; `lastHash`/`lastBackupDate` advance only after the
-///   write is verified.
+/// - Writes are atomic; `lastHash`/`lastSnapshotFilename`/`lastBackupDate`
+///   advance only after the write is verified.
 /// - Retention runs only after a verified write, touches only managed
 ///   `Promptdeck Backup *.promptdeck` files inside the backup folder, never
 ///   deletes the just-written file, and never throws away a success.
@@ -53,8 +53,12 @@ enum AutomaticBackupService {
     /// Writes an encrypted snapshot unless the library is unchanged.
     ///
     /// - Returns `.alreadyBackedUp` (writing nothing and leaving the stored
-    ///   hash/date untouched) when `force` is false and the fingerprint
-    ///   matches the stored hash; otherwise `.backedUp(URL)`.
+    ///   hash/date/filename untouched) when `force` is false, the fingerprint
+    ///   matches the stored hash, AND the tracked snapshot filename still
+    ///   resolves to a managed snapshot in the current backup folder. A
+    ///   fingerprint match with a missing/malformed/untracked snapshot falls
+    ///   through to the normal encrypted write path; otherwise
+    ///   `.backedUp(URL)`.
     @MainActor
     static func performBackup(modelContext: ModelContext, force: Bool) throws -> BackupOutcome {
         let store = BackupConfigurationStore.shared
@@ -86,8 +90,14 @@ enum AutomaticBackupService {
         // and read/fingerprint are healthy, so a stale ORDINARY error is
         // now misleading: clear it. A retention warning is preserved
         // untouched (no write occurred, so retention could not have been
-        // re-verified). lastHash/lastBackupDate are left alone.
-        if !force, let storedHash = store.lastHash, storedHash == sealed.fingerprint {
+        // re-verified). lastHash/lastBackupDate/lastSnapshotFilename are
+        // left alone. Dedupe requires BOTH a fingerprint match AND the
+        // tracked snapshot still existing as a managed file (Task 16B):
+        // a matching hash with a missing snapshot falls through to a
+        // replacement write below.
+        if !force, let storedHash = store.lastHash, storedHash == sealed.fingerprint,
+            lastSuccessfulSnapshotExists(in: directory, store: store)
+        {
             if let message = store.lastErrorMessage, !isRetentionWarning(message) {
                 store.lastErrorMessage = nil
                 store.save()
@@ -98,6 +108,7 @@ enum AutomaticBackupService {
         let destination = try writeArchive(sealed.archive, to: directory)
 
         store.lastHash = sealed.fingerprint
+        store.lastSnapshotFilename = destination.lastPathComponent
         store.lastBackupDate = Date()
         store.lastErrorMessage = nil
         store.save()
@@ -106,13 +117,50 @@ enum AutomaticBackupService {
         return .backedUp(destination)
     }
 
+    // MARK: - Missing-snapshot dedupe recovery (Task 16B)
+
+    /// Returns true only when the tracked snapshot filename still identifies
+    /// a managed snapshot in `directory`. Fail-closed: false on any
+    /// uncertainty, without throwing or deleting anything.
+    ///
+    /// Requires ALL of: `store.lastSnapshotFilename` is non-nil/non-empty;
+    /// the value is a safe filename only (no "/" or "\\" or NUL, not empty,
+    /// ".", or "..", not absolute, and
+    /// `URL(fileURLWithPath: name).lastPathComponent == name`); and the URL
+    /// formed by resolving that filename inside `directory` still passes the
+    /// existing `isManagedSnapshot` check (regular file, exact grammar,
+    /// strict date round-trip, magic header). A malformed name returns false
+    /// without touching the filesystem outside the backup folder.
+    static func lastSuccessfulSnapshotExists(in directory: URL, store: BackupConfigurationStore) -> Bool {
+        guard let name = store.lastSnapshotFilename, !name.isEmpty else {
+            return false
+        }
+        guard !name.contains("/"), !name.contains("\\"), !name.contains("\0") else {
+            return false
+        }
+        guard name != ".", name != ".." else {
+            return false
+        }
+        guard !name.hasPrefix("/") else {
+            return false
+        }
+        guard URL(fileURLWithPath: name).lastPathComponent == name else {
+            return false
+        }
+        let candidate = directory.appendingPathComponent(name, isDirectory: false)
+        guard candidate.lastPathComponent == name else {
+            return false
+        }
+        return isManagedSnapshot(candidate)
+    }
+
     // MARK: - setupFirstBackup
 
     /// Provisions a new backup location and writes the first snapshot.
     ///
     /// Always writes (`force` semantics) even when the fingerprint equals a
     /// previously stored hash. On success stores `isEnabled=true` plus the
-    /// bookmark, display path, hash, and date. On ANY failure removes the
+    /// bookmark, display path, hash, snapshot filename, and date. On ANY failure removes the
     /// provisional configuration and Keychain item, remains Off, and throws;
     /// a snapshot file written before a later failure is left in place.
     @MainActor
@@ -161,6 +209,7 @@ enum AutomaticBackupService {
             store.bookmarkData = bookmark
             store.displayPath = parentURL.path
             store.lastHash = sealed.fingerprint
+            store.lastSnapshotFilename = destination.lastPathComponent
             store.lastBackupDate = Date()
             store.lastErrorMessage = nil
             store.isEnabled = true
@@ -183,7 +232,7 @@ enum AutomaticBackupService {
     ///
     /// The existing configuration is left intact until the new snapshot is
     /// written and verified; only then are the stored bookmark, display
-    /// path, hash, and date replaced. Old backup files are never deleted.
+    /// path, hash, snapshot filename, and date replaced. Old backup files are never deleted.
     @MainActor
     static func changeLocation(newParentURL: URL, modelContext: ModelContext) throws -> URL {
         let store = BackupConfigurationStore.shared
@@ -227,6 +276,7 @@ enum AutomaticBackupService {
         store.bookmarkData = newBookmark
         store.displayPath = newParentURL.path
         store.lastHash = sealed.fingerprint
+        store.lastSnapshotFilename = destination.lastPathComponent
         store.lastBackupDate = Date()
         store.lastErrorMessage = nil
         store.save()
@@ -238,7 +288,7 @@ enum AutomaticBackupService {
     // MARK: - disable
 
     /// Turns automatic backup off. Removes the stored bookmark, display
-    /// path, hash, date, and error, and deletes the Keychain item.
+    /// path, hash, snapshot filename, date, and error, and deletes the Keychain item.
     /// Never deletes backup files. Throws without claiming a clean state
     /// when Keychain deletion fails.
     static func disable() throws {

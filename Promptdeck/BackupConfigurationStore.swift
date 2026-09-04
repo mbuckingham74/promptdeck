@@ -18,17 +18,19 @@ final class BackupConfigurationStore: ObservableObject {
     static let bookmarkKey = "com.mbuckingham.promptdeck.autobackup.bookmark"
     static let displayPathKey = "com.mbuckingham.promptdeck.autobackup.displayPath"
     static let lastHashKey = "com.mbuckingham.promptdeck.autobackup.lastHash"
+    static let lastSnapshotFilenameKey = "com.mbuckingham.promptdeck.autobackup.lastSnapshotFilename"
     static let lastBackupDateKey = "com.mbuckingham.promptdeck.autobackup.lastBackupDate"
     static let lastErrorKey = "com.mbuckingham.promptdeck.autobackup.lastError"
 
     private static var ownedKeys: [String] {
-        [enabledKey, bookmarkKey, displayPathKey, lastHashKey, lastBackupDateKey, lastErrorKey]
+        [enabledKey, bookmarkKey, displayPathKey, lastHashKey, lastSnapshotFilenameKey, lastBackupDateKey, lastErrorKey]
     }
 
     @Published var isEnabled: Bool = false
     @Published var bookmarkData: Data?
     @Published var displayPath: String?
     @Published var lastHash: String?
+    @Published var lastSnapshotFilename: String?
     @Published var lastBackupDate: Date?
     @Published var lastErrorMessage: String?
 
@@ -43,6 +45,7 @@ final class BackupConfigurationStore: ObservableObject {
         bookmarkData = defaults.data(forKey: Self.bookmarkKey)
         displayPath = defaults.string(forKey: Self.displayPathKey)
         lastHash = defaults.string(forKey: Self.lastHashKey)
+        lastSnapshotFilename = defaults.string(forKey: Self.lastSnapshotFilenameKey)
         lastBackupDate = defaults.object(forKey: Self.lastBackupDateKey) as? Date
         lastErrorMessage = defaults.string(forKey: Self.lastErrorKey)
     }
@@ -66,6 +69,11 @@ final class BackupConfigurationStore: ObservableObject {
         } else {
             defaults.removeObject(forKey: Self.lastHashKey)
         }
+        if let lastSnapshotFilename {
+            defaults.set(lastSnapshotFilename, forKey: Self.lastSnapshotFilenameKey)
+        } else {
+            defaults.removeObject(forKey: Self.lastSnapshotFilenameKey)
+        }
         if let lastBackupDate {
             defaults.set(lastBackupDate, forKey: Self.lastBackupDateKey)
         } else {
@@ -88,6 +96,7 @@ final class BackupConfigurationStore: ObservableObject {
         bookmarkData = nil
         displayPath = nil
         lastHash = nil
+        lastSnapshotFilename = nil
         lastBackupDate = nil
         lastErrorMessage = nil
     }
