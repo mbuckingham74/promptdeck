@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -34,6 +35,12 @@ private func parseTags(_ raw: String) -> [String] {
     raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
 }
 
+private func copyToPasteboard(_ text: String) -> Bool {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    return pasteboard.setString(text, forType: .string)
+}
+
 struct PromptLibraryView: View {
     @Query(sort: \PromptEntry.title) private var prompts: [PromptEntry]
     @State private var selection: UUID?
@@ -55,15 +62,28 @@ struct PromptLibraryView: View {
                 }
             } else {
                 List(prompts, selection: $selection) { prompt in
-                    VStack(alignment: .leading) {
-                        Text(prompt.title)
-                        Text(verbatim: prompt.body)
-                            .lineLimit(2)
-                        if !prompt.tags.isEmpty {
-                            Text(verbatim: prompt.tags.joined(separator: ", "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(prompt.title)
+                            Text(verbatim: prompt.body)
+                                .lineLimit(2)
+                            if !prompt.tags.isEmpty {
+                                Text(verbatim: prompt.tags.joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        Spacer()
+                        Button {
+                            if copyToPasteboard(prompt.body) {
+                                prompt.lastCopiedAt = Date()
+                            }
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Copy prompt")
+                        .help("Copy prompt")
                     }
                     .tag(prompt.id)
                 }
@@ -178,22 +198,35 @@ struct CommandLibraryView: View {
                 }
             } else {
                 List(commands, selection: $selection) { command in
-                    VStack(alignment: .leading) {
-                        Text(command.title)
-                        Text(verbatim: command.command)
-                            .monospaced()
-                            .lineLimit(1)
-                        if !command.explanation.isEmpty {
-                            Text(verbatim: command.explanation)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(command.title)
+                            Text(verbatim: command.command)
+                                .monospaced()
+                                .lineLimit(1)
+                            if !command.explanation.isEmpty {
+                                Text(verbatim: command.explanation)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            if !command.tags.isEmpty {
+                                Text(verbatim: command.tags.joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        if !command.tags.isEmpty {
-                            Text(verbatim: command.tags.joined(separator: ", "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            if copyToPasteboard(command.command) {
+                                command.lastCopiedAt = Date()
+                            }
+                        } label: {
+                            Image(systemName: "doc.on.doc")
                         }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Copy command")
+                        .help("Copy command")
                     }
                     .tag(command.id)
                 }
