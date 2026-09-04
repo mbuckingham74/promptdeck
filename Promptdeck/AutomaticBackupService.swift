@@ -289,10 +289,104 @@ enum AutomaticBackupService {
         backupDirectoryURL(parentURL: try resolveParentURL())
     }
 
-    /// Managed snapshots inside `directory`: only files with the backup
-    /// prefix and `.promptdeck` suffix, sorted oldest first by creation
-    /// date with the filename as fallback. Never throws; retention treats
-    /// an unreadable folder as nothing to prune.
+    /// Conservative ownership check for retention (Task 16A).
+    ///
+    /// Returns true ONLY when ALL hold; returns false on any uncertainty
+    /// (fail-closed): a regular file (not a symlink, not a directory),
+    /// an exact generated filename
+    /// (`Promptdeck Backup YYYY-MM-DD HH-MM-SS.promptdeck` or
+    /// `Promptdeck Backup YYYY-MM-DD HH-MM-SS -N.promptdeck` with N>=2 and
+    /// no leading zeros, timestamp ranges enforced plus strict calendar
+    /// validation via formatter round-trip), and a header beginning
+    /// with `PromptdeckArchiveCodec.magic`. Never decrypts, never touches
+    /// the Keychain.
+    static func isManagedSnapshot(_ url: URL) -> Bool {
+        // a. Regular file, not symlink, not directory. Check symlink first;
+        // do NOT follow symlinks. Fail closed on any throw/nil.
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey]) else {
+            return false
+        }
+        guard values.isSymbolicLink == false else {
+            return false
+        }
+        guard values.isRegularFile == true, values.isDirectory == false else {
+            return false
+        }
+        // b. Exact filename grammar, anchored and case-sensitive.
+        let name = url.lastPathComponent
+        guard Self.snapshotFilenameRegex.firstMatch(
+            in: name,
+            options: [],
+            range: NSRange(name.startIndex..<name.endIndex, in: name)
+        ) != nil else {
+            return false
+        }
+        // b2. Strict calendar validation: the regex accepts impossible
+        // dates (e.g. 2026-02-31), so extract the 19-char timestamp after
+        // the prefix (collision ` -N` suffix already excluded by position)
+        // and require an exact formatter round-trip. Fail closed.
+        guard let stampStart = name.index(name.startIndex, offsetBy: filenamePrefix.count, limitedBy: name.endIndex),
+            let stampEnd = name.index(stampStart, offsetBy: 19, limitedBy: name.endIndex)
+        else {
+            return false
+        }
+        let stamp = String(name[stampStart..<stampEnd])
+        guard let date = Self.snapshotStampFormatter.date(from: stamp),
+            Self.snapshotStampFormatter.string(from: date) == stamp
+        else {
+            return false
+        }
+        // c. Archive magic: header-only check, no decrypt/Keychain/PBKDF2.
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer {
+            try? handle.close()
+        }
+        do {
+            // `as Data?` keeps this compiling whether the SDK spells
+            // `read(upToCount:)` as `throws -> Data` or `throws -> Data?`.
+            guard let header = try handle.read(upToCount: PromptdeckArchiveCodec.magic.count) as Data?,
+                header == PromptdeckArchiveCodec.magic
+            else {
+                return false
+            }
+        } catch {
+            return false
+        }
+        return true
+    }
+
+    /// Anchored generated-filename grammar, compiled once. Timestamp ranges
+    /// are plausible (month 01-12, day 01-31, hour 00-23, min/sec 00-59);
+    /// the `-N` suffix allows only N>=2 with no leading zeros. Impossible
+    /// calendar dates (e.g. Feb 31) pass this shape check and are rejected
+    /// separately by strict formatter round-trip validation.
+    private static let snapshotFilenameRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(
+            pattern: "^Promptdeck Backup \\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01]) (?:[01][0-9]|2[0-3])-[0-5][0-9]-[0-5][0-9](?: -(?:[2-9]|[1-9][0-9]+))?\\.promptdeck$"
+        )
+    }()
+
+    /// Strict stamp parser sharing `uniqueDestination`'s generator config
+    /// (en_US_POSIX locale, `yyyy-MM-dd HH-mm-ss`, Gregorian calendar,
+    /// default time zone) with leniency disabled. A parsed Date formatted
+    /// back must equal the original text exactly; formatter normalization
+    /// (Feb 30 -> Mar 02, etc.) therefore fails validation.
+    private static let snapshotStampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
+        formatter.isLenient = false
+        return formatter
+    }()
+
+    /// Managed snapshots inside `directory`: only files passing the
+    /// conservative `isManagedSnapshot` ownership check, sorted oldest
+    /// first by creation date with the filename as fallback. Never throws;
+    /// retention treats an unreadable folder as nothing to prune.
     static func listManagedSnapshots(in directory: URL) -> [URL] {
         guard let items = try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -302,8 +396,7 @@ enum AutomaticBackupService {
             return []
         }
         let managed = items.filter {
-            $0.lastPathComponent.hasPrefix(filenamePrefix)
-                && $0.pathExtension == filenameExtension
+            Self.isManagedSnapshot($0)
         }
         return managed.sorted { lhs, rhs in
             let lhsDate = (try? lhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate
@@ -400,9 +493,11 @@ enum AutomaticBackupService {
     }
 
     /// Deletes the oldest managed snapshots so at most `maxSnapshots`
-    /// remain. Only runs after a verified write; only touches managed
-    /// files; never deletes `newURL`. A retention failure keeps the backup
-    /// and records a warning instead of throwing the success away.
+    /// remain. Only runs after a verified write; only touches files passing
+    /// the conservative `isManagedSnapshot` ownership check, re-guarded
+    /// immediately before deletion; never deletes `newURL`. A retention
+    /// failure keeps the backup and records a warning instead of throwing
+    /// the success away.
     private static func enforceRetention(keeping newURL: URL, in directory: URL) {
         let managed = listManagedSnapshots(in: directory).filter { $0 != newURL }
         let totalIncludingNew = managed.count + 1
@@ -412,6 +507,10 @@ enum AutomaticBackupService {
         let overflow = totalIncludingNew - maxSnapshots
         var failed = false
         for url in managed.prefix(overflow) {
+            // Defense-in-depth: re-guard ownership immediately before delete.
+            guard Self.isManagedSnapshot(url) else {
+                continue
+            }
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {
