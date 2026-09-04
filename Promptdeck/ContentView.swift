@@ -46,9 +46,20 @@ struct PromptLibraryView: View {
     @State private var selection: UUID?
     @State private var showingNewPrompt = false
     @State private var showingEditPrompt = false
+    @State private var searchText = ""
+
+    private var filteredPrompts: [PromptEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return prompts }
+        return prompts.filter { prompt in
+            prompt.title.localizedCaseInsensitiveContains(query)
+                || prompt.body.localizedCaseInsensitiveContains(query)
+                || prompt.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+        }
+    }
 
     private var selectedPrompt: PromptEntry? {
-        prompts.first(where: { $0.id == selection })
+        filteredPrompts.first(where: { $0.id == selection })
     }
 
     var body: some View {
@@ -60,8 +71,13 @@ struct PromptLibraryView: View {
                     Text("Saved prompts will appear here.")
                         .foregroundStyle(.secondary)
                 }
+            } else if filteredPrompts.isEmpty {
+                VStack(spacing: 8) {
+                    Text("No matching prompts.")
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                List(prompts, selection: $selection) { prompt in
+                List(filteredPrompts, selection: $selection) { prompt in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(prompt.title)
@@ -90,6 +106,7 @@ struct PromptLibraryView: View {
             }
         }
         .navigationTitle("Prompts")
+        .searchable(text: $searchText)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -97,7 +114,7 @@ struct PromptLibraryView: View {
                 } label: {
                     Label("Edit", systemImage: "square.and.pencil")
                 }
-                .disabled(selection == nil)
+                .disabled(selectedPrompt == nil)
             }
             ToolbarItem {
                 Button {
@@ -182,9 +199,21 @@ struct CommandLibraryView: View {
     @State private var selection: UUID?
     @State private var showingNewCommand = false
     @State private var showingEditCommand = false
+    @State private var searchText = ""
+
+    private var filteredCommands: [CommandEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return commands }
+        return commands.filter { command in
+            command.title.localizedCaseInsensitiveContains(query)
+                || command.command.localizedCaseInsensitiveContains(query)
+                || command.explanation.localizedCaseInsensitiveContains(query)
+                || command.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+        }
+    }
 
     private var selectedCommand: CommandEntry? {
-        commands.first(where: { $0.id == selection })
+        filteredCommands.first(where: { $0.id == selection })
     }
 
     var body: some View {
@@ -196,8 +225,13 @@ struct CommandLibraryView: View {
                     Text("Saved commands will appear here.")
                         .foregroundStyle(.secondary)
                 }
+            } else if filteredCommands.isEmpty {
+                VStack(spacing: 8) {
+                    Text("No matching commands.")
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                List(commands, selection: $selection) { command in
+                List(filteredCommands, selection: $selection) { command in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(command.title)
@@ -233,6 +267,7 @@ struct CommandLibraryView: View {
             }
         }
         .navigationTitle("Commands")
+        .searchable(text: $searchText)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -240,7 +275,7 @@ struct CommandLibraryView: View {
                 } label: {
                     Label("Edit", systemImage: "square.and.pencil")
                 }
-                .disabled(selection == nil)
+                .disabled(selectedCommand == nil)
             }
             ToolbarItem {
                 Button {
