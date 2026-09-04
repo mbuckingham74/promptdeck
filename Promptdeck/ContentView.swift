@@ -50,11 +50,21 @@ struct PromptLibraryView: View {
 
     private var filteredPrompts: [PromptEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return prompts }
-        return prompts.filter { prompt in
-            prompt.title.localizedCaseInsensitiveContains(query)
-                || prompt.body.localizedCaseInsensitiveContains(query)
-                || prompt.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+        let base: [PromptEntry]
+        if query.isEmpty {
+            base = prompts
+        } else {
+            base = prompts.filter { prompt in
+                prompt.title.localizedCaseInsensitiveContains(query)
+                    || prompt.body.localizedCaseInsensitiveContains(query)
+                    || prompt.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+            }
+        }
+        return base.sorted { lhs, rhs in
+            if lhs.isFavorite != rhs.isFavorite {
+                return lhs.isFavorite && !rhs.isFavorite
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
     }
 
@@ -90,6 +100,14 @@ struct PromptLibraryView: View {
                             }
                         }
                         Spacer()
+                        Button {
+                            prompt.isFavorite.toggle()
+                        } label: {
+                            Image(systemName: prompt.isFavorite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(prompt.isFavorite ? "Unfavorite prompt" : "Favorite prompt")
+                        .help(prompt.isFavorite ? "Unfavorite prompt" : "Favorite prompt")
                         Button {
                             if copyToPasteboard(prompt.body) {
                                 prompt.lastCopiedAt = Date()
@@ -203,12 +221,22 @@ struct CommandLibraryView: View {
 
     private var filteredCommands: [CommandEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return commands }
-        return commands.filter { command in
-            command.title.localizedCaseInsensitiveContains(query)
-                || command.command.localizedCaseInsensitiveContains(query)
-                || command.explanation.localizedCaseInsensitiveContains(query)
-                || command.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+        let base: [CommandEntry]
+        if query.isEmpty {
+            base = commands
+        } else {
+            base = commands.filter { command in
+                command.title.localizedCaseInsensitiveContains(query)
+                    || command.command.localizedCaseInsensitiveContains(query)
+                    || command.explanation.localizedCaseInsensitiveContains(query)
+                    || command.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+            }
+        }
+        return base.sorted { lhs, rhs in
+            if lhs.isFavorite != rhs.isFavorite {
+                return lhs.isFavorite && !rhs.isFavorite
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
     }
 
@@ -251,6 +279,14 @@ struct CommandLibraryView: View {
                             }
                         }
                         Spacer()
+                        Button {
+                            command.isFavorite.toggle()
+                        } label: {
+                            Image(systemName: command.isFavorite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(command.isFavorite ? "Unfavorite command" : "Favorite command")
+                        .help(command.isFavorite ? "Unfavorite command" : "Favorite command")
                         Button {
                             if copyToPasteboard(command.command) {
                                 command.lastCopiedAt = Date()
