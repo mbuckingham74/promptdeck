@@ -355,6 +355,7 @@ struct PromptRowView: View {
             Spacer()
             Button {
                 prompt.isFavorite.toggle()
+                AutomaticBackupScheduler.shared.contentDidChange()
             } label: {
                 Image(systemName: prompt.isFavorite ? "star.fill" : "star")
             }
@@ -529,6 +530,7 @@ struct PromptLibraryView: View {
             return
         }
         modelContext.delete(target)
+        AutomaticBackupScheduler.shared.contentDidChange()
         pendingDeleteID = nil
         selection = nil
         focusSearch()
@@ -802,6 +804,7 @@ struct PromptEditorView: View {
                             let newEntry = PromptEntry(title: title, body: promptBody, tags: parseTags(tagsString))
                             modelContext.insert(newEntry)
                         }
+                        AutomaticBackupScheduler.shared.contentDidChange()
                         dismiss()
                     }
                     .disabled(!canSave)
@@ -837,6 +840,7 @@ struct CommandRowView: View {
             Spacer()
             Button {
                 command.isFavorite.toggle()
+                AutomaticBackupScheduler.shared.contentDidChange()
             } label: {
                 Image(systemName: command.isFavorite ? "star.fill" : "star")
             }
@@ -1012,6 +1016,7 @@ struct CommandLibraryView: View {
             return
         }
         modelContext.delete(target)
+        AutomaticBackupScheduler.shared.contentDidChange()
         pendingDeleteID = nil
         selection = nil
         focusSearch()
@@ -1310,6 +1315,7 @@ struct CommandEditorView: View {
                             )
                             modelContext.insert(newEntry)
                         }
+                        AutomaticBackupScheduler.shared.contentDidChange()
                         dismiss()
                     }
                     .disabled(!canSave)

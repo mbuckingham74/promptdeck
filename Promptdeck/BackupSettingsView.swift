@@ -242,6 +242,7 @@ struct BackupSettingsView: View {
         defer { isWorking = false }
         do {
             try AutomaticBackupService.disable()
+            AutomaticBackupScheduler.shared.cancelPending()
             notice = nil
             actionError = nil
         } catch {
