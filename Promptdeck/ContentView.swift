@@ -33,6 +33,11 @@ struct ContentView: View {
     @State private var commandViewMode: LibraryViewMode = .recent
     @State private var pendingExportURL: URL?
     @State private var showingExportPassphrase = false
+    @State private var pendingImportArchive: Data?
+    @State private var pendingImportFileName = "Promptdeck Export.promptdeck"
+    @State private var showingImportPassphrase = false
+    @State private var pendingImportPlan: ImportMergePlan?
+    @State private var showingImportConfirm = false
 
     private func switchTo(_ target: LibrarySelection) {
         selection = target
@@ -66,6 +71,27 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    guard let url = ImportService.importSourceURL() else { return }
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if accessing { url.stopAccessingSecurityScopedResource() }
+                    }
+                    do {
+                        let data = try Data(contentsOf: url)
+                        pendingImportArchive = data
+                        pendingImportFileName = url.lastPathComponent
+                        showingImportPassphrase = true
+                    } catch {
+                        pendingImportArchive = nil
+                        ImportService.presentImportReadFailure()
+                    }
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .help("Import")
+            }
             ToolbarItem {
                 Button {
                     if let url = ExportService.exportDestinationURL() {
@@ -119,6 +145,71 @@ struct ContentView: View {
                     pendingExportURL = nil
                 }
             )
+        }
+        .sheet(isPresented: $showingImportPassphrase) {
+            ImportPassphraseSheet(
+                fileName: pendingImportFileName,
+                onConfirm: { passphrase in
+                    guard let archive = pendingImportArchive else {
+                        showingImportPassphrase = false
+                        return
+                    }
+                    showingImportPassphrase = false
+                    do {
+                        let pair = try PromptdeckArchiveCodec.open(archive: archive, passphrase: passphrase)
+                        let plan = try ImportService.prepareImport(
+                            promptsData: pair.promptsData,
+                            commandsData: pair.commandsData,
+                            modelContext: modelContext
+                        )
+                        pendingImportPlan = plan
+                        showingImportConfirm = true
+                    } catch {
+                        pendingImportArchive = nil
+                        pendingImportFileName = "Promptdeck Export.promptdeck"
+                        ImportService.presentImportPreparationFailure(error)
+                    }
+                },
+                onCancel: {
+                    // Cancel decrypts nothing, mutates nothing, stores nothing.
+                    showingImportPassphrase = false
+                    pendingImportArchive = nil
+                    pendingImportFileName = "Promptdeck Export.promptdeck"
+                }
+            )
+        }
+        .alert("Import Promptdeck Export?", isPresented: $showingImportConfirm) {
+            Button("Cancel", role: .cancel) {
+                // Cancel mutates nothing.
+                showingImportConfirm = false
+                pendingImportPlan = nil
+                pendingImportArchive = nil
+                pendingImportFileName = "Promptdeck Export.promptdeck"
+            }
+            Button("Import") {
+                guard let plan = pendingImportPlan else {
+                    showingImportConfirm = false
+                    return
+                }
+                showingImportConfirm = false
+                do {
+                    try ImportService.applyImport(plan: plan, container: modelContext.container, mainContext: modelContext)
+                    pendingImportPlan = nil
+                    pendingImportArchive = nil
+                    pendingImportFileName = "Promptdeck Export.promptdeck"
+                    // Fresh post-import state: clears row selection + search
+                    // query in the visible library and refocuses Search.
+                    resetNonce += 1
+                    ImportService.presentImportSuccess(plan: plan)
+                } catch {
+                    pendingImportPlan = nil
+                    pendingImportArchive = nil
+                    pendingImportFileName = "Promptdeck Export.promptdeck"
+                    ImportService.presentImportFailure(error)
+                }
+            }
+        } message: {
+            Text(pendingImportPlan?.summaryMessage ?? "Existing items not included in this export will remain unchanged.")
         }
     }
 }
