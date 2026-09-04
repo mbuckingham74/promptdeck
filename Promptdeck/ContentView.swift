@@ -280,11 +280,23 @@ private func sortCommandsByRecency(_ entries: [CommandEntry]) -> [CommandEntry] 
 // keys pressed while search is focused. A local keyDown monitor fires first
 // regardless of focus, so arrows/Return/Escape work from both search and list.
 // All other keys (typing, Cmd shortcuts) pass through untouched.
+// Task 16C: the monitor is scoped to its owning library window only.
+// Events from any other window (Settings, sheets, alerts) pass through
+// untouched. Fail-open: if ownership cannot be proven, do not handle.
 private struct LibraryKeyMonitor: NSViewRepresentable {
     var onEvent: (NSEvent) -> Bool
 
+    final class WindowReportingView: NSView {
+        var onWindowChange: ((NSWindow?) -> Void)?
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChange?(window)
+        }
+    }
+
     final class Coordinator {
         var onEvent: (NSEvent) -> Bool = { _ in false }
+        weak var owningWindow: NSWindow?
         var monitor: Any?
     }
 
@@ -293,11 +305,19 @@ private struct LibraryKeyMonitor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
+        let view = WindowReportingView(frame: .zero)
         context.coordinator.onEvent = onEvent
         let coordinator = context.coordinator
+        view.onWindowChange = { [weak coordinator] window in
+            coordinator?.owningWindow = window
+        }
+        coordinator.owningWindow = view.window
         coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak coordinator] event in
-            if coordinator?.onEvent(event) == true {
+            guard let coordinator else { return event }
+            guard let owningWindow = coordinator.owningWindow else { return event }
+            guard let eventWindow = event.window else { return event }
+            guard eventWindow === owningWindow else { return event }
+            if coordinator.onEvent(event) == true {
                 return nil
             }
             return event
@@ -307,6 +327,12 @@ private struct LibraryKeyMonitor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.onEvent = onEvent
+        // viewDidMoveToWindow is the source of truth, but adopt the actual
+        // containing window here if we missed the initial move (window is
+        // nil during makeNSView). This still uses only this view's window.
+        if context.coordinator.owningWindow == nil {
+            context.coordinator.owningWindow = nsView.window
+        }
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -314,6 +340,8 @@ private struct LibraryKeyMonitor: NSViewRepresentable {
             NSEvent.removeMonitor(monitor)
         }
         coordinator.monitor = nil
+        coordinator.owningWindow = nil
+        (nsView as? WindowReportingView)?.onWindowChange = nil
     }
 }
 
