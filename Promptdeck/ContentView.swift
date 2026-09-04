@@ -31,6 +31,8 @@ struct ContentView: View {
     @State private var resetNonce = 0
     @State private var promptViewMode: LibraryViewMode = .recent
     @State private var commandViewMode: LibraryViewMode = .recent
+    @State private var pendingExportURL: URL?
+    @State private var showingExportPassphrase = false
 
     private func switchTo(_ target: LibrarySelection) {
         selection = target
@@ -66,7 +68,10 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem {
                 Button {
-                    ExportService.exportLibraries(modelContext: modelContext)
+                    if let url = ExportService.exportDestinationURL() {
+                        pendingExportURL = url
+                        showingExportPassphrase = true
+                    }
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
@@ -86,6 +91,34 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingShortcuts) {
             ShortcutsHelpView()
+        }
+        .sheet(isPresented: $showingExportPassphrase) {
+            ExportPassphraseSheet(
+                fileName: pendingExportURL?.lastPathComponent ?? "Promptdeck Export.promptdeck",
+                onConfirm: { passphrase in
+                    guard let destination = pendingExportURL else {
+                        showingExportPassphrase = false
+                        return
+                    }
+                    showingExportPassphrase = false
+                    pendingExportURL = nil
+                    do {
+                        try ExportService.writeEncryptedArchive(
+                            to: destination,
+                            passphrase: passphrase,
+                            modelContext: modelContext
+                        )
+                        ExportService.presentExportSuccess(fileName: destination.lastPathComponent)
+                    } catch {
+                        ExportService.presentExportFailure(error)
+                    }
+                },
+                onCancel: {
+                    // Cancel writes nothing and stores nothing.
+                    showingExportPassphrase = false
+                    pendingExportURL = nil
+                }
+            )
         }
     }
 }

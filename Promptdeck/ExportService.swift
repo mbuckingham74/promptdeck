@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftData
+import SwiftUI
 
 // MARK: - Export DTOs (explicit; never encode SwiftData models directly)
 
@@ -149,7 +150,12 @@ struct CommandLibraryDocument: Codable {
     var commands: [CommandExportDTO]
 }
 
-// MARK: - Export service (manual JSON export)
+enum ExportBuildError: Error {
+    case fetchFailed(Error)
+    case encodeFailed(Error)
+}
+
+// MARK: - Export service (encrypted .promptdeck export)
 
 enum ExportService {
     /// Single ISO-8601 UTC format with sub-second precision, shared by
@@ -179,33 +185,19 @@ enum ExportService {
         return result
     }
 
+    /// Canonical in-memory JSON pair. Reuses DTOs, makeEncoder, the shared
+    /// exportedAt timestamp, UUID sorting, and trailing newlines.
+    /// Performs no disk writes.
     @MainActor
-    private static func showAlert(style: NSAlert.Style, title: String, message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = style
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    @MainActor
-    private static func showError(_ message: String) {
-        showAlert(style: .warning, title: "Export failed.", message: message)
-    }
-
-    /// Exports both libraries to prompts.json + commands.json in a user-chosen directory.
-    @MainActor
-    static func exportLibraries(modelContext: ModelContext) {
-        // Fetch all records (independent of UI mode/search/selection). Read-only.
+    static func buildCanonicalPair(modelContext: ModelContext) throws -> (promptsData: Data, commandsData: Data, exportedAt: Date) {
+        // Snapshot both libraries read-only (independent of UI mode/search/selection).
         let promptEntries: [PromptEntry]
         let commandEntries: [CommandEntry]
         do {
             promptEntries = try modelContext.fetch(FetchDescriptor<PromptEntry>())
             commandEntries = try modelContext.fetch(FetchDescriptor<CommandEntry>())
         } catch {
-            showError("Could not read libraries: \(error.localizedDescription)")
-            return
+            throw ExportBuildError.fetchFailed(error)
         }
 
         // Single shared exportedAt for both documents.
@@ -257,58 +249,150 @@ enum ExportService {
             commands: commandDTOs
         )
 
-        // Pre-encode BOTH payloads before touching disk.
+        // Pre-encode BOTH payloads in memory (no disk writes here).
         let encoder = makeEncoder()
-        let promptsData: Data
-        let commandsData: Data
         do {
-            promptsData = withTrailingNewline(try encoder.encode(promptDocument))
-            commandsData = withTrailingNewline(try encoder.encode(commandDocument))
+            let promptsData = withTrailingNewline(try encoder.encode(promptDocument))
+            let commandsData = withTrailingNewline(try encoder.encode(commandDocument))
+            return (promptsData: promptsData, commandsData: commandsData, exportedAt: exportedAt)
         } catch {
-            showError("Could not encode export data: \(error.localizedDescription)")
-            return
+            throw ExportBuildError.encodeFailed(error)
         }
+    }
 
-        // Native macOS folder picker.
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
+    @MainActor
+    private static func showAlert(style: NSAlert.Style, title: String, message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    @MainActor
+    static func presentExportSuccess(fileName: String) {
+        showAlert(style: .informational, title: "Export complete.", message: "Exported \(fileName).")
+    }
+
+    @MainActor
+    static func presentExportFailure(_ error: Error) {
+        let message: String
+        if let buildError = error as? ExportBuildError {
+            switch buildError {
+            case .fetchFailed(let underlying):
+                message = "Could not read libraries: \(underlying.localizedDescription)"
+            case .encodeFailed(let underlying):
+                message = "Could not encode export data: \(underlying.localizedDescription)"
+            }
+        } else if let archiveError = error as? PromptdeckArchiveError {
+            switch archiveError {
+            case .emptyPassphrase:
+                message = "Enter a passphrase and confirm it."
+            default:
+                message = "Could not encrypt export data."
+            }
+        } else {
+            message = "Could not write export file: \(error.localizedDescription)"
+        }
+        showAlert(style: .warning, title: "Export failed.", message: message)
+    }
+
+    /// Native macOS save panel for the single encrypted export.
+    /// Returns the `.promptdeck` destination, or nil when cancelled.
+    @MainActor
+    static func exportDestinationURL() -> URL? {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Promptdeck Export.promptdeck"
+        panel.allowedFileTypes = ["promptdeck"]
+        panel.allowsOtherFileTypes = false
         panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
         panel.prompt = "Export"
-        guard panel.runModal() == .OK, let directoryURL = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        // Enforce the .promptdeck extension even if the user edited the name.
+        if url.pathExtension.lowercased() == "promptdeck" {
+            return url
+        }
+        return url.appendingPathExtension("promptdeck")
+    }
 
-        let accessing = directoryURL.startAccessingSecurityScopedResource()
+    /// Snapshots SwiftData read-only, seals the canonical pair, and writes the
+    /// archive atomically. Passphrase is used as exact UTF-8 bytes and never
+    /// persisted (local only, no Keychain/UserDefaults/AppStorage/SwiftData).
+    @MainActor
+    static func writeEncryptedArchive(to destinationURL: URL, passphrase: String, modelContext: ModelContext) throws {
+        let pair = try buildCanonicalPair(modelContext: modelContext)
+        let archive = try PromptdeckArchiveCodec.seal(
+            prompts: pair.promptsData,
+            commands: pair.commandsData,
+            passphrase: passphrase
+        )
+        let accessing = destinationURL.startAccessingSecurityScopedResource()
         defer {
-            if accessing { directoryURL.stopAccessingSecurityScopedResource() }
+            if accessing { destinationURL.stopAccessingSecurityScopedResource() }
         }
+        try archive.write(to: destinationURL, options: .atomic)
+    }
+}
 
-        let promptsURL = directoryURL.appendingPathComponent("prompts.json")
-        let commandsURL = directoryURL.appendingPathComponent("commands.json")
-        let fileManager = FileManager.default
-        let promptsExists = fileManager.fileExists(atPath: promptsURL.path)
-        let commandsExists = fileManager.fileExists(atPath: commandsURL.path)
+// MARK: - Encrypted export passphrase sheet
 
-        // Overwrite confirmation when either target already exists.
-        if promptsExists || commandsExists {
-            let confirm = NSAlert()
-            confirm.alertStyle = .warning
-            confirm.messageText = "Replace existing export files?"
-            confirm.informativeText = "Existing Promptdeck export files (prompts.json, commands.json) in this folder will be replaced."
-            confirm.addButton(withTitle: "Replace")
-            confirm.addButton(withTitle: "Cancel")
-            guard confirm.runModal() == .alertFirstButtonReturn else { return }
+/// Modal passphrase prompt: two SecureFields with inline validation.
+/// Cancel writes/stores nothing; mismatch/empty shows an inline error and
+/// never encrypts or writes. Passphrase lives in local @State only.
+struct ExportPassphraseSheet: View {
+    var fileName: String
+    var onConfirm: (String) -> Void
+    var onCancel: () -> Void
+
+    @State private var passphrase = ""
+    @State private var confirmation = ""
+    @State private var inlineError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Encrypt Export")
+                .font(.headline)
+            Text("Encrypting \(fileName). Enter a passphrase to protect this export.")
+                .foregroundStyle(.secondary)
+            SecureField("Passphrase", text: $passphrase)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Confirm passphrase", text: $confirmation)
+                .textFieldStyle(.roundedBorder)
+            if let inlineError {
+                Text(inlineError)
+                    .foregroundStyle(.red)
+                    .font(.callout)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    passphrase = ""
+                    confirmation = ""
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Export") {
+                    // Exact comparison only: no trimming, no complexity rules.
+                    if passphrase.isEmpty || confirmation.isEmpty {
+                        inlineError = "Enter a passphrase and confirm it."
+                        return
+                    }
+                    if passphrase != confirmation {
+                        inlineError = "Passphrases do not match."
+                        return
+                    }
+                    inlineError = nil
+                    let confirmed = passphrase
+                    passphrase = ""
+                    confirmation = ""
+                    onConfirm(confirmed)
+                }
+                .keyboardShortcut(.defaultAction)
+            }
         }
-
-        // Atomic writes (only after both encodings succeeded).
-        do {
-            try promptsData.write(to: promptsURL, options: .atomic)
-            try commandsData.write(to: commandsURL, options: .atomic)
-        } catch {
-            showError("Could not write export files: \(error.localizedDescription)")
-            return
-        }
-
-        showAlert(style: .informational, title: "Export complete.", message: "Exported prompts.json and commands.json.")
+        .padding()
+        .frame(minWidth: 360)
     }
 }

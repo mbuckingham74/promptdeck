@@ -12,6 +12,7 @@
 		717171717171717171717171 /* PromptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PromptEntry.swift */; };
 		727272727272727272727272 /* CommandEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C2C2C2C2C2C2C2C2C2C2C2 /* CommandEntry.swift */; };
 		E4E4E4E4E4E4E4E4E4E4E4E4 /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */; };
+		E6E6E6E6E6E6E6E6E6E6E6E6 /* PromptdeckArchiveCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */; };
 		7A7A7A7A7A7A7A7A7A7A7A7A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -21,6 +22,7 @@
 		C1C1C1C1C1C1C1C1C1C1C1C1 /* PromptEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEntry.swift; sourceTree = "<group>"; };
 		C2C2C2C2C2C2C2C2C2C2C2C2 /* CommandEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandEntry.swift; sourceTree = "<group>"; };
 		E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
+		E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptdeckArchiveCodec.swift; sourceTree = "<group>"; };
 		EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FFFFFFFFFFFFFFFFFFFFFFFF /* Promptdeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Promptdeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -60,6 +62,7 @@
 				C1C1C1C1C1C1C1C1C1C1C1C1 /* PromptEntry.swift */,
 				C2C2C2C2C2C2C2C2C2C2C2C2 /* CommandEntry.swift */,
 				E3E3E3E3E3E3E3E3E3E3E3E3 /* ExportService.swift */,
+				E5E5E5E5E5E5E5E5E5E5E5E5 /* PromptdeckArchiveCodec.swift */,
 				EEEEEEEEEEEEEEEEEEEEEEEE /* Assets.xcassets */,
 			);
 			path = Promptdeck;
@@ -141,6 +144,7 @@
 				717171717171717171717171 /* PromptEntry.swift in Sources */,
 				727272727272727272727272 /* CommandEntry.swift in Sources */,
 				E4E4E4E4E4E4E4E4E4E4E4E4 /* ExportService.swift in Sources */,
+				E6E6E6E6E6E6E6E6E6E6E6E6 /* PromptdeckArchiveCodec.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
