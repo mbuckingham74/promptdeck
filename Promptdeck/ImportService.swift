@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Import merge plan (validated, unapplied)
 
@@ -305,7 +306,9 @@ enum ImportService {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedFileTypes = ["promptdeck"]
+        if let promptdeckType = UTType(filenameExtension: "promptdeck") {
+            panel.allowedContentTypes = [promptdeckType]
+        }
         panel.allowsOtherFileTypes = false
         panel.prompt = "Import"
         guard panel.runModal() == .OK, let url = panel.url else { return nil }

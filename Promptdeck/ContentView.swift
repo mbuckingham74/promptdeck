@@ -46,6 +46,13 @@ struct ContentView: View {
         resetNonce += 1
     }
 
+    private var backupWarningMessage: String {
+        if AutomaticBackupService.isRetentionWarning(BackupConfigurationStore.shared.lastErrorMessage) {
+            return "Backup succeeded, but Promptdeck couldn't remove one or more old snapshots. Open Settings to review the backup status."
+        }
+        return "Promptdeck couldn't complete an automatic backup. It will keep retrying automatically. Open Settings to review the backup status."
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
@@ -223,7 +230,7 @@ struct ContentView: View {
                 backupScheduler.dismissWarning()
             }
         } message: {
-            Text("Promptdeck couldn't complete an automatic backup. It will keep retrying automatically. Open Settings to review the backup status.")
+            Text(backupWarningMessage)
         }
     }
 }

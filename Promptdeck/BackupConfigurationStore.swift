@@ -2,16 +2,15 @@ import Combine
 import Foundation
 
 /// Encapsulated UserDefaults wrapper for automatic-backup configuration
-/// (Task 15A). Headless-engine state only; `ObservableObject` conformance
-/// exists for a future Settings UI.
+/// (Task 15A). Observed by the existing backup Settings UI.
 ///
 /// Owns exactly the keys listed below. Never stores the passphrase
-/// (that lives in `BackupKeychainService`).
+/// (that lives only in `BackupKeychainService`).
 final class BackupConfigurationStore: ObservableObject {
     // nonisolated(unsafe): Swift 6 requires explicit opt-out for a shared
     // mutable singleton. Lazy static initialization is thread-safe, and all
     // reads/writes funnel through UserDefaults (thread-safe) plus plain
-    // in-memory state owned by the headless engine (no Settings UI yet).
+    // in-memory state observed by the backup Settings UI.
     static nonisolated(unsafe) let shared = BackupConfigurationStore()
 
     static let enabledKey = "com.mbuckingham.promptdeck.autobackup.enabled"

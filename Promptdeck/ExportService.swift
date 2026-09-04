@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Export DTOs (explicit; never encode SwiftData models directly)
 
@@ -323,7 +324,9 @@ enum ExportService {
     static func exportDestinationURL() -> URL? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Promptdeck Export.promptdeck"
-        panel.allowedFileTypes = ["promptdeck"]
+        if let promptdeckType = UTType(filenameExtension: "promptdeck") {
+            panel.allowedContentTypes = [promptdeckType]
+        }
         panel.allowsOtherFileTypes = false
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
