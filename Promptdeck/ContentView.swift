@@ -186,6 +186,7 @@ struct ShortcutsHelpView: View {
                 LabeledContent("Return", value: "Copy selected prompt or command, then hide Promptdeck")
                 LabeledContent("Esc", value: "Cancel, reset, and hide Promptdeck")
                 LabeledContent("⇧⌘F", value: "Toggle Recent/Favorites")
+                LabeledContent("⌘⌫", value: "Delete selected entry")
                 LabeledContent("⌘?", value: "Show keyboard shortcuts")
             }
             .frame(minHeight: 220)
@@ -245,10 +246,14 @@ struct PromptLibraryView: View {
     @Binding var resetNonce: Int
     @Binding var showingShortcuts: Bool
     @Binding var viewMode: LibraryViewMode
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \PromptEntry.title) private var prompts: [PromptEntry]
     @State private var selection: UUID?
     @State private var showingNewPrompt = false
     @State private var showingEditPrompt = false
+    @State private var showingDeletePrompt = false
+    @State private var pendingDeleteID: UUID?
+    @State private var pendingDeleteTitle = ""
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
 
@@ -375,11 +380,36 @@ struct PromptLibraryView: View {
         }
     }
 
+    private func requestDelete() {
+        guard let target = selectedPrompt else {
+            return
+        }
+        pendingDeleteID = target.id
+        pendingDeleteTitle = target.title
+        showingDeletePrompt = true
+    }
+
+    private func confirmDelete() {
+        guard let id = pendingDeleteID, id == selectedPrompt?.id,
+              let target = prompts.first(where: { $0.id == id }) else {
+            pendingDeleteID = nil
+            return
+        }
+        modelContext.delete(target)
+        pendingDeleteID = nil
+        selection = nil
+        focusSearch()
+    }
+
+    private func cancelDelete() {
+        pendingDeleteID = nil
+    }
+
     // Local-monitor entry point. Returns true when the key was handled
     // (swallow it) or false to let it pass through untouched (typing,
     // Cmd shortcuts, keys while an editor/help sheet is open).
     private func handleMonitorEvent(_ event: NSEvent) -> Bool {
-        if showingNewPrompt || showingEditPrompt || showingShortcuts {
+        if showingNewPrompt || showingEditPrompt || showingShortcuts || showingDeletePrompt {
             return false
         }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -399,6 +429,12 @@ struct PromptLibraryView: View {
                     return true
                 case 19:
                     switchLibrary(to: .commands)
+                    return true
+                case 51:
+                    guard selectedPrompt != nil else {
+                        return true
+                    }
+                    requestDelete()
                     return true
                 default:
                     return false
@@ -435,6 +471,9 @@ struct PromptLibraryView: View {
     // This stays as a backup path for Cmd combos only.
     private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
         if press.modifiers == .command {
+            if showingNewPrompt || showingEditPrompt || showingShortcuts || showingDeletePrompt {
+                return .ignored
+            }
             if press.characters == "1" {
                 switchLibrary(to: .prompts)
                 return .handled
@@ -451,7 +490,7 @@ struct PromptLibraryView: View {
                 return .handled
             }
             if press.characters == "f" || press.characters == "F" {
-                if showingNewPrompt || showingEditPrompt || showingShortcuts {
+                if showingNewPrompt || showingEditPrompt || showingShortcuts || showingDeletePrompt {
                     return .ignored
                 }
                 toggleViewMode()
@@ -540,6 +579,14 @@ struct PromptLibraryView: View {
                 }
                 ToolbarItem {
                     Button {
+                        requestDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(selectedPrompt == nil)
+                }
+                ToolbarItem {
+                    Button {
                         showingNewPrompt = true
                     } label: {
                         Image(systemName: "plus")
@@ -552,6 +599,21 @@ struct PromptLibraryView: View {
             .sheet(isPresented: $showingEditPrompt) {
                 if let selectedPrompt {
                     PromptEditorView(entry: selectedPrompt)
+                }
+            }
+            .alert("Delete \"\(pendingDeleteTitle)\"?", isPresented: $showingDeletePrompt) {
+                Button("Delete", role: .destructive) {
+                    confirmDelete()
+                }
+                Button("Cancel", role: .cancel) {
+                    cancelDelete()
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
+            .onChange(of: showingDeletePrompt) { _, isPresented in
+                if !isPresented {
+                    pendingDeleteID = nil
                 }
             }
     }
@@ -666,10 +728,14 @@ struct CommandLibraryView: View {
     @Binding var resetNonce: Int
     @Binding var showingShortcuts: Bool
     @Binding var viewMode: LibraryViewMode
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \CommandEntry.title) private var commands: [CommandEntry]
     @State private var selection: UUID?
     @State private var showingNewCommand = false
     @State private var showingEditCommand = false
+    @State private var showingDeleteCommand = false
+    @State private var pendingDeleteID: UUID?
+    @State private var pendingDeleteTitle = ""
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
 
@@ -797,11 +863,36 @@ struct CommandLibraryView: View {
         }
     }
 
+    private func requestDelete() {
+        guard let target = selectedCommand else {
+            return
+        }
+        pendingDeleteID = target.id
+        pendingDeleteTitle = target.title
+        showingDeleteCommand = true
+    }
+
+    private func confirmDelete() {
+        guard let id = pendingDeleteID, id == selectedCommand?.id,
+              let target = commands.first(where: { $0.id == id }) else {
+            pendingDeleteID = nil
+            return
+        }
+        modelContext.delete(target)
+        pendingDeleteID = nil
+        selection = nil
+        focusSearch()
+    }
+
+    private func cancelDelete() {
+        pendingDeleteID = nil
+    }
+
     // Local-monitor entry point. Returns true when the key was handled
     // (swallow it) or false to let it pass through untouched (typing,
     // Cmd shortcuts, keys while an editor/help sheet is open).
     private func handleMonitorEvent(_ event: NSEvent) -> Bool {
-        if showingNewCommand || showingEditCommand || showingShortcuts {
+        if showingNewCommand || showingEditCommand || showingShortcuts || showingDeleteCommand {
             return false
         }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -821,6 +912,12 @@ struct CommandLibraryView: View {
                     return true
                 case 19:
                     switchLibrary(to: .commands)
+                    return true
+                case 51:
+                    guard selectedCommand != nil else {
+                        return true
+                    }
+                    requestDelete()
                     return true
                 default:
                     return false
@@ -857,6 +954,9 @@ struct CommandLibraryView: View {
     // This stays as a backup path for Cmd combos only.
     private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
         if press.modifiers == .command {
+            if showingNewCommand || showingEditCommand || showingShortcuts || showingDeleteCommand {
+                return .ignored
+            }
             if press.characters == "1" {
                 switchLibrary(to: .prompts)
                 return .handled
@@ -873,7 +973,7 @@ struct CommandLibraryView: View {
                 return .handled
             }
             if press.characters == "f" || press.characters == "F" {
-                if showingNewCommand || showingEditCommand || showingShortcuts {
+                if showingNewCommand || showingEditCommand || showingShortcuts || showingDeleteCommand {
                     return .ignored
                 }
                 toggleViewMode()
@@ -962,6 +1062,14 @@ struct CommandLibraryView: View {
                 }
                 ToolbarItem {
                     Button {
+                        requestDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(selectedCommand == nil)
+                }
+                ToolbarItem {
+                    Button {
                         showingNewCommand = true
                     } label: {
                         Image(systemName: "plus")
@@ -974,6 +1082,21 @@ struct CommandLibraryView: View {
             .sheet(isPresented: $showingEditCommand) {
                 if let selectedCommand {
                     CommandEditorView(entry: selectedCommand)
+                }
+            }
+            .alert("Delete \"\(pendingDeleteTitle)\"?", isPresented: $showingDeleteCommand) {
+                Button("Delete", role: .destructive) {
+                    confirmDelete()
+                }
+                Button("Cancel", role: .cancel) {
+                    cancelDelete()
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
+            .onChange(of: showingDeleteCommand) { _, isPresented in
+                if !isPresented {
+                    pendingDeleteID = nil
                 }
             }
     }
